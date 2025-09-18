@@ -11,7 +11,7 @@ inputs:
   repo:
     description: "The GitHub repository to use for the action"
     required: true
-    default: "${{ github.repository }}"
+    default: "KondalaYaswanth/admin_portal"
   pr_number:
     description: "The GitHub pull request number to use for the action"
     required: true
