@@ -27,10 +27,10 @@ runs:
   env:
     API_KEY: ${{ inputs.apiKey }}
     GITHUB_TOKEN: ${{ inputs.githubToken }}
-    GITHUB_REPOSITORY: ${{ inputs.githubRepository }}
+    GITHUB_REPOSITORY: ${{ inputs.repo }}
     GITHUB_PULL_REQUEST_NUMBER: ${{ inputs.githubPullRequestNumber }}
     GIT_COMMIT_HASH: ${{ inputs.gitCommitHash }}
   args:
     - "--model=${{inputs.model}}"
-    - "--repo=${{ inputs.githubRepository }}"
+    - "--repo=${{ inputs.repo }}"
     - "--pr_number=${{inputs.pr_number}}"
