@@ -125,6 +125,7 @@ def cli(repo, pr_number, model):
     pr_url = f"https://api.github.com/repos/{repo_owner}/{repo_name}/pulls/{pr_number}"
     headers = {} if public_repo else AUTH_HEADERS
     pr_response = requests.get(pr_url, headers=headers)
+    click.echo(pr_response)
     if pr_response.status_code != 200:
         click.echo(f"Error fetching PR details (Status: {pr_response.status_code}, Response: {pr_response.text}).")
         return
@@ -135,9 +136,10 @@ def cli(repo, pr_number, model):
     if not files:
         click.echo("No files retrieved from the PR. Check repository and PR number.")
         return
+    click.echo(len(files))
     for file in files:
         filename = file['filename']
-        if not filename.endswith(".py"):
+        if not filename.endswith(".js"):
             continue
         
         diff = file.get('patch', '')
