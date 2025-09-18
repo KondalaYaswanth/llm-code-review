@@ -1,188 +1,154 @@
-#  Licensed under the Apache License, Version 2.0 (the "License");
-#  you may not use this file except in compliance with the License.
-#  You may obtain a copy of the License at
-#
-#          http://www.apache.org/licenses/LICENSE-2.0
-#
-#  Unless required by applicable law or agreed to in writing, software
-#  distributed under the License is distributed on an "AS IS" BASIS,
-#  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-#  See the License for the specific language governing permissions and
-#  limitations under the License.
-import json
-import os
-from typing import List
-
-import click
 import requests
-from langchain import HuggingFaceHub, LLMChain, PromptTemplate
-from loguru import logger
+import openai
+import click
+import os
+import base64
+from dotenv import load_dotenv
 
+load_dotenv()
 
-def check_required_env_vars():
-    """Check required environment variables"""
-    required_env_vars = [
-        "API_KEY",
-        "GITHUB_TOKEN",
-        "GITHUB_REPOSITORY",
-        "GITHUB_PULL_REQUEST_NUMBER",
-        "GIT_COMMIT_HASH",
-    ]
-    for required_env_var in required_env_vars:
-        if os.getenv(required_env_var) is None:
-            raise ValueError(f"{required_env_var} is not set")
+try:
+    import ollama
+    OLLAMA_AVAILABLE = True
+except ImportError:
+    OLLAMA_AVAILABLE = False
 
+# Set API keys via environment variables for security
+GITHUB_TOKEN = os.getenv("GITHUB_TOKEN")
+OPENAI_API_KEY = os.getenv("API_KEY")
 
-def create_a_comment_to_pull_request(
-        github_token: str,
-        github_repository: str,
-        pull_request_number: int,
-        git_commit_hash: str,
-        body: str):
-    """Create a comment to a pull request"""
-    headers = {
-        "Accept": "application/vnd.github.v3.patch",
-        "authorization": f"Bearer {github_token}"
-    }
-    data = {
-        "body": body,
-        "commit_id": git_commit_hash,
-        "event": "COMMENT"
-    }
-    url = f"https://api.github.com/repos/{github_repository}/pulls/{pull_request_number}/reviews"
-    response = requests.post(url, headers=headers, data=json.dumps(data))
-    return response
+# GitHub API Headers (only if authentication is needed)
+AUTH_HEADERS = {"Authorization": f"token {GITHUB_TOKEN}", "Accept": "application/vnd.github.v3+json"} if GITHUB_TOKEN else {}
 
+def is_repo_public(repo_owner, repo_name):
+    """Check if a repository is public."""
+    url = f"https://api.github.com/repos/{repo_owner}/{repo_name}"
+    response = requests.get(url)  # Unauthenticated request
+    if response.status_code == 200:
+        return True  # Public repo
+    elif response.status_code == 404:
+        click.echo(f"Error: Repository {repo_owner}/{repo_name} not found.")
+    else:
+        click.echo(f"Error: Unable to determine repository visibility (Status: {response.status_code}, Response: {response.text}).")
+    return False
 
-def chunk_string(input_string: str, chunk_size) -> List[str]:
-    """Chunk a string"""
-    chunked_inputs = []
-    for i in range(0, len(input_string), chunk_size):
-        chunked_inputs.append(input_string[i:i + chunk_size])
-    return chunked_inputs
+def fetch_pr_files(repo_owner, repo_name, pr_number, public_repo):
+    """Fetch the modified files and their diffs in the pull request."""
+    url = f"https://api.github.com/repos/{repo_owner}/{repo_name}/pulls/{pr_number}/files"
+    headers = {} if public_repo else AUTH_HEADERS
+    response = requests.get(url, headers=headers)
+    if response.status_code != 200:
+        click.echo(f"Error fetching PR files (Status: {response.status_code}, Response: {response.text}).")
+        return []
+    return response.json()
 
+def fetch_file_content(repo_owner, repo_name, file_path, branch, public_repo):
+    """Fetch the full content of a file from the repository."""
+    url = f"https://api.github.com/repos/{repo_owner}/{repo_name}/contents/{file_path}?ref={branch}"
+    headers = {} if public_repo else AUTH_HEADERS
+    response = requests.get(url, headers=headers)
+    if response.status_code != 200:
+        click.echo(f"Error fetching file {file_path} (Status: {response.status_code}, Response: {response.text}).")
+        return ""
+    file_data = response.json()
+    if 'content' in file_data:
+        return base64.b64decode(file_data['content']).decode('utf-8')
+    return ""
 
-def get_review(
-        repo_id: str,
-        diff: str,
-        temperature: float,
-        max_new_tokens: int,
-        top_p: float,
-        top_k: int,
-        prompt_chunk_size: int
-):
-    """Get a review"""
-    # Chunk the prompt
-    chunked_diff_list = chunk_string(input_string=diff, chunk_size=prompt_chunk_size)
-    # Get summary by chunk
-    chunked_reviews = []
-    llm = HuggingFaceHub(
-        repo_id=repo_id,
-        model_kwargs={"temperature": temperature,
-                      "max_new_tokens": max_new_tokens,
-                      "top_p": top_p,
-                      "top_k": top_k},
-                      huggingfacehub_api_token=os.getenv("API_KEY")
-    )
-    for chunked_diff in chunked_diff_list:
-        question=chunked_diff
-        template = """Provide a concise summary of the bug found in the code, describing its characteristics, 
-        location, and potential effects on the overall functionality and performance of the application.
-        Present the potential issues and errors first, following by the most important findings, in your summary
-        Important: Include block of code / diff in the summary also the line number.
-
-        Diff:
-
-        {question}
-        """
-
-        prompt = PromptTemplate(template=template, input_variables=["question"])
-        llm_chain = LLMChain(prompt=prompt, llm=llm)
-        review_result = llm_chain.run(question)
-        chunked_reviews.append(review_result)
-
-    # If the chunked reviews are only one, return it
-    if len(chunked_reviews) == 1:
-        return chunked_reviews, chunked_reviews[0]
-
-    question="\n".join(chunked_reviews)
-    template = """Summarize the following file changed in a pull request submitted by a developer on GitHub,
-    focusing on major modifications, additions, deletions, and any significant updates within the files.
-    Do not include the file name in the summary and list the summary with bullet points.
-    Important: Include block of code / diff in the summary also the line number.
+def review_code(diff, filename, full_code, model):
+    """Generate a code review using OpenAI or Ollama based on the chosen model."""
+    provider, model_name = model.split(":", 1)
     
-    Diff:
-    {question}
+    prompt = f"""
+    You are a code reviewer. Review the following Git diff from {filename} for potential bugs.
+    Use the full file content as context, but focus only on the changes.
+    Suggest improvements where necessary. Keep it concise, don't highlight positives, just negatives.
+    If there are more than 3 suggestions for a file, pick the top suggestion only, unless there is a critical one.
+    Show before and after code snippets where possible. Be encouraging.
+    
+    Full file content:
+    ```python
+    {full_code}
+    ```
+    
+    Changes:
+    ```diff
+    {diff}
+    ```
+    
+    Provide constructive feedback with clear recommendations.
     """
-    prompt = PromptTemplate(template=template, input_variables=["question"])
-    llm_chain = LLMChain(prompt=prompt, llm=llm)
-    summarized_review = llm_chain.run(question)
-    return chunked_reviews, summarized_review
-
-
-def format_review_comment(summarized_review: str, chunked_reviews: List[str]) -> str:
-    """Format reviews"""
-    if len(chunked_reviews) == 1:
-        return summarized_review
-    unioned_reviews = "\n".join(chunked_reviews)
-    review = f"""<details>
-    <summary>{summarized_review}</summary>
-    {unioned_reviews}
-    </details>
-    """
-    return review
+    
+    try:
+        if provider == "openai":
+            client = openai.OpenAI(api_key=OPENAI_API_KEY)
+            response = client.chat.completions.create(
+                model=model_name,
+                messages=[{"role": "user", "content": prompt}]
+            )
+            return response.choices[0].message.content
+        
+        elif provider == "ollama":
+            if not OLLAMA_AVAILABLE:
+                raise RuntimeError("Ollama module is not installed. Install it using 'pip install ollama'.")
+            response = ollama.chat(model=model_name, messages=[{"role": "user", "content": prompt}])
+            return response["message"]["content"]
+        
+        
+        else:
+            raise ValueError("Invalid model provider. Use 'openai' or 'ollama'.")
+    except Exception as e:
+        click.echo(f"Error during code review: {e}")
+        return ""
 
 
 @click.command()
-@click.option("--diff", type=click.STRING, required=True, help="Pull request diff")
-@click.option("--diff-chunk-size", type=click.INT, required=False, default=3500, help="Pull request diff")
-@click.option("--repo-id", type=click.STRING, required=False, default="gpt-3.5-turbo", help="Model")
-@click.option("--temperature", type=click.FLOAT, required=False, default=0.1, help="Temperature")
-@click.option("--max-new-tokens", type=click.INT, required=False, default=250, help="Max tokens")
-@click.option("--top-p", type=click.FLOAT, required=False, default=1.0, help="Top N")
-@click.option("--top-k", type=click.INT, required=False, default=1.0, help="Top T")
-@click.option("--log-level", type=click.STRING, required=False, default="INFO", help="Presence penalty")
-def main(
-        diff: str,
-        diff_chunk_size: int,
-        repo_id: str,
-        temperature: float,
-        max_new_tokens: int,
-        top_p: float,
-        top_k: int,
-        log_level: str
-):
-    # Set log level
-    logger.level(log_level)
-    # Check if necessary environment variables are set or not
-    check_required_env_vars()
-
-    # Request a code review
-    chunked_reviews, summarized_review = get_review(
-        diff=diff,
-        repo_id=repo_id,
-        temperature=temperature,
-        max_new_tokens=max_new_tokens,
-        top_p=top_p,
-        top_k=top_k,
-        prompt_chunk_size=diff_chunk_size
-    )
-    logger.debug(f"Summarized review: {summarized_review}")
-    logger.debug(f"Chunked reviews: {chunked_reviews}")
-
-    # Format reviews
-    review_comment = format_review_comment(summarized_review=summarized_review,
-                                           chunked_reviews=chunked_reviews)
-    # Create a comment to a pull request
-    create_a_comment_to_pull_request(
-        github_token=os.getenv("GITHUB_TOKEN"),
-        github_repository=os.getenv("GITHUB_REPOSITORY"),
-        pull_request_number=int(os.getenv("GITHUB_PULL_REQUEST_NUMBER")),
-        git_commit_hash=os.getenv("GIT_COMMIT_HASH"),
-        body=review_comment
-    )
-
+@click.option("--repo",required=True,help="repository name")
+@click.option("--pr_number", type=int,required=True,help="pr-number")
+@click.option("--model", required=False, default="ollama:llama3")
+def cli(repo, pr_number, model):
+    """Fetch and review a GitHub PR using OpenAI or Ollama with full file context."""
+    repo_owner, repo_name = repo.split("/")
+    public_repo = is_repo_public(repo_owner, repo_name)
+    
+    if not public_repo and not GITHUB_TOKEN:
+        click.echo("Error: Private repository detected. Please set GITHUB_TOKEN as an environment variable.")
+        return
+    
+    provider, _ = model.split(":", 1)
+    if provider == "openai" and not OPENAI_API_KEY:
+        click.echo("Error: Please set OPENAI_API_KEY as an environment variable.")
+        return
+    
+    # Fetch PR details to get the branch name
+    pr_url = f"https://api.github.com/repos/{repo_owner}/{repo_name}/pulls/{pr_number}"
+    headers = {} if public_repo else AUTH_HEADERS
+    pr_response = requests.get(pr_url, headers=headers)
+    if pr_response.status_code != 200:
+        click.echo(f"Error fetching PR details (Status: {pr_response.status_code}, Response: {pr_response.text}).")
+        return
+    pr_data = pr_response.json()
+    branch = pr_data['head']['ref']
+    
+    files = fetch_pr_files(repo_owner, repo_name, pr_number, public_repo)
+    if not files:
+        click.echo("No files retrieved from the PR. Check repository and PR number.")
+        return
+    for file in files:
+        filename = file['filename']
+        if not filename.endswith(".py"):
+            continue
+        
+        diff = file.get('patch', '')
+        
+        if not diff:
+            click.echo(f"No changes detected in {filename}")
+            continue
+        
+        full_code = fetch_file_content(repo_owner, repo_name, filename, branch, public_repo)
+        click.echo(f"\nReviewing changes in: {filename}")
+        review = review_code(diff, filename, full_code, model)
+        click.echo(f"\nReview for {filename}:{review}\n{'-'*40}")
 
 if __name__ == "__main__":
-    # pylint: disable=no-value-for-parameter
-    main()
+    cli()
