@@ -108,6 +108,7 @@ def review_code(diff, filename, full_code, model):
 @click.option("--model", required=False, default="ollama:llama3")
 def cli(repo, pr_number, model):
     """Fetch and review a GitHub PR using OpenAI or Ollama with full file context."""
+    print(repo,pr_number,model)
     repo_owner, repo_name = repo.split("/")
     public_repo = is_repo_public(repo_owner, repo_name)
     
