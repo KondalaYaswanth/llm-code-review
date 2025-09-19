@@ -143,7 +143,7 @@ def summarize_and_email(
     genai.configure(api_key=gemini_key)
 
     prompt = f"""
-    You are drafting an email to a developer about a code review.
+    You are drafting an email to a developer called about a code review. your name is reviewer.ai.
     1.Create a concise email-ready summary of the following code review report.
     Highlight the most important findings, potential bugs, and recommendations.
     Be clear and professional.
