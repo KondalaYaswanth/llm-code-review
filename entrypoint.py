@@ -124,10 +124,10 @@ def review_code(diff, filename, full_code, model):
 @click.option("--repo",required=True,help="repository name")
 @click.option("--pr_number", type=int,required=True,help="pr-number")
 @click.option("--model", required=True, help="model name is required")
-@click.option("--prAuthorEmail",required=True,help="email")
-def cli(repo, pr_number, model,prauthorEmail):
+@click.option("--pr_authorEmail",required=True,help="email")
+def cli(repo, pr_number, model,pr_authorEmail):
     """Fetch and review a GitHub PR using OpenAI or Ollama with full file context."""
-    print(repo,pr_number,model,prauthorEmail)
+    print(repo,pr_number,model,pr_authorEmail)
     repo_owner, repo_name = repo.split("/")
     public_repo = is_repo_public(repo_owner, repo_name)
     
