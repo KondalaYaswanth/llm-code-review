@@ -143,16 +143,11 @@ def summarize_and_email(
     genai.configure(api_key=gemini_key)
 
     prompt = f"""
-            You are reviewer.ai, an automated code reviewer.
-
-        1. Write an email for a developer named developer.
-        The email must include:
-        - A short, natural greeting: "Hi developer," as the first line.
-        - A clear, concise summary of the code review findings.
-        - Key bugs, potential risks, and actionable recommendations.
-        - A professional closing line such as "Thanks," or "Regards," followed by "reviewer.ai".
-        Tone: professional, constructive, and easy to scan.
-        Use bullet points or short paragraphs for the main findings.
+    You are drafting an email to a developer called about a code review. your name is reviewer.ai.
+    -A short, natural greeting: "Hi developer," as the first line.
+    1.Create a concise email-ready summary of the following code review report.
+    Highlight the most important findings, potential bugs, and recommendations.
+    Be clear and professional.
     2. Suggest an email SUBJECT line that quickly shows urgency:
        - Start with 🚨 if critical issues or security bugs were found.
        - Start with ⚠️ if moderate issues were found.
