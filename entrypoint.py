@@ -93,7 +93,7 @@ def review_code(diff, filename, full_code, model):
         elif provider == "ollama":
             if not OLLAMA_AVAILABLE:
                 raise RuntimeError("Ollama module is not installed. Install it using 'pip install ollama'.")
-            response = ollama.chat(model=model_name, messages=[{"role": "user", "content": prompt}])
+            response = ollama.chat(model=model_name, messages=[{"role": "user", "content": prompt}],host="http://localhost:11434")
             return response["message"]["content"]
         
         
