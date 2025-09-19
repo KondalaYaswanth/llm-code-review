@@ -223,7 +223,7 @@ def cli(repo, pr_number, model,pr_authoremail):
         review = review_code(diff, filename, full_code, model)
         click.echo(f"\nReview for {filename}:{review}\n{'-'*40}")
         with open(output_file, "a", encoding="utf-8") as f:
-        f.write(f"\n### Review for {filename}\n{review}\n{'-'*40}\n")
+            f.write(f"\n### Review for {filename}\n{review}\n{'-'*40}\n")
     click.echo("sending mail")
     try:
         summarize_and_email(output_file,pr_authoremail)
