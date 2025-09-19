@@ -143,15 +143,29 @@ def summarize_and_email(
     genai.configure(api_key=gemini_key)
 
     prompt = f"""
-    Create a concise email-ready summary of the following code review report.
+    You are drafting an email to a developer about a code review.
+    1.Create a concise email-ready summary of the following code review report.
     Highlight the most important findings, potential bugs, and recommendations.
     Be clear and professional.
+    2. Suggest an email SUBJECT line that quickly shows urgency:
+       - Start with 🚨 if critical issues or security bugs were found.
+       - Start with ⚠️ if moderate issues were found.
+       - Start with ✅ if everything is minor.
+       The subject should be fewer than 80 characters.
 
     Review file content:
     {review_text}
     """
     model = genai.GenerativeModel("gemini-1.5-flash")
     summary = model.generate_content(prompt).text
+    body = summary
+    for line in summary.splitlines():
+        if line.lower().startswith("subject:"):
+            subject = line.split(":", 1)[1].strip()
+            body = summary.replace(line, "").strip()
+            break
+    if not subject:
+        subject = "Code Review Summary"
 
     # --- Prepare email ---
     sender_email = os.getenv("SENDER_EMAIL")        # must be set as a secret
@@ -163,7 +177,7 @@ def summarize_and_email(
     message["Subject"] = subject
     message["From"] = sender_email
     message["To"] = recipient_email
-    message.set_content(summary)
+    message.set_content(body)
 
     # --- Send email ---
     with smtplib.SMTP_SSL("smtp.gmail.com", 465) as smtp:
