@@ -20,6 +20,10 @@ inputs:
     description: "LLM model"
     required: true
     default: ""
+  prAuthorEmail:
+    description: "user email"
+    required: true
+    default: ""
   
 runs:
   using: docker
@@ -34,3 +38,4 @@ runs:
     - "--model=${{inputs.model}}"
     - "--repo=${{ inputs.repo }}"
     - "--pr_number=${{inputs.pr_number}}"
+    - "--prAuthorEmail=${{inputs.prAuthorEmail}}"
