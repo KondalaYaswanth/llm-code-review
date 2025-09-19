@@ -20,7 +20,7 @@ inputs:
     description: "LLM model"
     required: true
     default: ""
-  pr_authorEmail:
+  pr_authoremail:
     description: "user email"
     required: true
     default: ""
@@ -38,4 +38,4 @@ runs:
     - "--model=${{inputs.model}}"
     - "--repo=${{ inputs.repo }}"
     - "--pr_number=${{inputs.pr_number}}"
-    - "--pr_authorEmail=${{inputs.pr_authorEmail}}"
+    - "--pr_authoremail=${{inputs.pr_authoremail}}"
