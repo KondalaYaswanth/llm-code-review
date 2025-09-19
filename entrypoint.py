@@ -12,10 +12,15 @@ try:
     OLLAMA_AVAILABLE = True
 except ImportError:
     OLLAMA_AVAILABLE = False
+try:
+    import google.generativeai as genai
+    GEMINI_AVAILABLE = True
+except ImportError:
+    GEMINI_AVAILABLE = False
 
 # Set API keys via environment variables for security
 GITHUB_TOKEN = os.getenv("GITHUB_TOKEN")
-OPENAI_API_KEY = os.getenv("API_KEY")
+API_KEY = os.getenv("API_KEY")
 os.environ["OLLAMA_HOST"] = "http://localhost:11434"
 
 
@@ -83,7 +88,7 @@ def review_code(diff, filename, full_code, model):
     
     try:
         if provider == "openai":
-            client = openai.OpenAI(api_key=OPENAI_API_KEY)
+            client = openai.OpenAI(api_key=API_KEY)
             response = client.chat.completions.create(
                 model=model_name,
                 messages=[{"role": "user", "content": prompt}]
@@ -95,6 +100,17 @@ def review_code(diff, filename, full_code, model):
                 raise RuntimeError("Ollama module is not installed. Install it using 'pip install ollama'.")
             response = ollama.chat(model=model_name, messages=[{"role": "user", "content": prompt}],host="http://localhost:11434")
             return response["message"]["content"]
+
+        elif provider == "gemini":
+            if not GEMINI_AVAILABLE:
+                raise RuntimeError("Google Gemini module not installed. Install with 'pip install google-generativeai'.")
+            if not API_KEY:
+                raise RuntimeError("GEMINI_API_KEY environment variable not set.")
+            genai.configure(api_key=API_KEY)
+            model_obj = genai.GenerativeModel(model_name)
+            response = model_obj.generate_content(prompt)
+            # response.text contains the full generated review
+            return response.text
         
         
         else:

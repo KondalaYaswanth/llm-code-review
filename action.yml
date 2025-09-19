@@ -18,7 +18,7 @@ inputs:
     default: "${{ github.event.pull_request.number }}"
   model:
     description: "LLM model"
-    required: flase
+    required: true
     default: ""
   
 runs:
