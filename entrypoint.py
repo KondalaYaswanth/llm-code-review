@@ -16,6 +16,8 @@ except ImportError:
 # Set API keys via environment variables for security
 GITHUB_TOKEN = os.getenv("GITHUB_TOKEN")
 OPENAI_API_KEY = os.getenv("API_KEY")
+os.environ["OLLAMA_HOST"] = "http://localhost:11434"
+
 
 # GitHub API Headers (only if authentication is needed)
 AUTH_HEADERS = {"Authorization": f"token {GITHUB_TOKEN}", "Accept": "application/vnd.github.v3+json"} if GITHUB_TOKEN else {}
@@ -139,8 +141,6 @@ def cli(repo, pr_number, model):
     click.echo(len(files))
     for file in files:
         filename = file['filename']
-        if not filename.endswith(".js"):
-            continue
         
         diff = file.get('patch', '')
         
