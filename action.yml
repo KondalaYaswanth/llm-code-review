@@ -24,6 +24,14 @@ inputs:
     description: "user email"
     required: true
     default: ""
+  SENDER_EMAIL:
+    description: "sender email"
+    required: true
+    default: "null"
+  SENDER_PASSWORD:
+    description: "app password is required dont use personal email password"
+    required: true
+    default: "null"
   
 runs:
   using: docker
@@ -31,9 +39,10 @@ runs:
   env:
     API_KEY: ${{ inputs.apiKey }}
     GITHUB_TOKEN: ${{ inputs.githubToken }}
-    GITHUB_REPOSITORY: ${{ inputs.repo }}
-    GITHUB_PULL_REQUEST_NUMBER: ${{ inputs.githubPullRequestNumber }}
-    GIT_COMMIT_HASH: ${{ inputs.gitCommitHash }}
+    SENDER_PASSWORD:
+    SENDER_PASSWORD:
+    
+
   args:
     - "--model=${{inputs.model}}"
     - "--repo=${{ inputs.repo }}"

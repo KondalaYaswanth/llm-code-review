@@ -4,6 +4,9 @@ import click
 import os
 import base64
 from dotenv import load_dotenv
+import smtplib
+from email.message import EmailMessage
+import google.generativeai as genai
 
 load_dotenv()
 
@@ -118,6 +121,56 @@ def review_code(diff, filename, full_code, model):
     except Exception as e:
         click.echo(f"Error during code review: {e}")
         return ""
+def summarize_and_email(
+    review_file_path: str,
+    recipient_email: str,
+    subject: str = "Code Review Summary",
+):
+    """
+    Read a text file containing code review details,
+    create a summary using Gemini, and send it as an email.
+    """
+    # --- Load file ---
+    if not os.path.exists(review_file_path):
+        raise FileNotFoundError(f"{review_file_path} does not exist")
+    with open(review_file_path, "r", encoding="utf-8") as f:
+        review_text = f.read()
+
+    # --- Summarize with Gemini (or replace with OpenAI etc.) ---
+    gemini_key = os.getenv("API_KEY")
+    if not gemini_key:
+        raise RuntimeError("GEMINI_API_KEY not set in environment variables.")
+    genai.configure(api_key=gemini_key)
+
+    prompt = f"""
+    Create a concise email-ready summary of the following code review report.
+    Highlight the most important findings, potential bugs, and recommendations.
+    Be clear and professional.
+
+    Review file content:
+    {review_text}
+    """
+    model = genai.GenerativeModel("gemini-1.5-flash")
+    summary = model.generate_content(prompt).text
+
+    # --- Prepare email ---
+    sender_email = os.getenv("SENDER_EMAIL")        # must be set as a secret
+    sender_password = os.getenv("SENDER_PASSWORD")  # app password for Gmail/SMTP
+    if not sender_email or not sender_password:
+        raise RuntimeError("Set SENDER_EMAIL and SENDER_PASSWORD environment variables.")
+
+    message = EmailMessage()
+    message["Subject"] = subject
+    message["From"] = sender_email
+    message["To"] = recipient_email
+    message.set_content(summary)
+
+    # --- Send email ---
+    with smtplib.SMTP_SSL("smtp.gmail.com", 465) as smtp:
+        smtp.login(sender_email, sender_password)
+        smtp.send_message(message)
+
+    print(f"✅ Summary emailed to {recipient_email}")
 
 
 @click.command()
@@ -127,7 +180,7 @@ def review_code(diff, filename, full_code, model):
 @click.option("--pr_authoremail",required=True,help="email")
 def cli(repo, pr_number, model,pr_authoremail):
     """Fetch and review a GitHub PR using OpenAI or Ollama with full file context."""
-    print(repo,pr_number,model,pr_authoremail)
+    print(repo,pr_number,model,"email:",pr_authoremail)
     repo_owner, repo_name = repo.split("/")
     public_repo = is_repo_public(repo_owner, repo_name)
     
@@ -139,7 +192,7 @@ def cli(repo, pr_number, model,pr_authoremail):
     if provider == "openai" and not OPENAI_API_KEY:
         click.echo("Error: Please set OPENAI_API_KEY as an environment variable.")
         return
-    
+    output_file = "/github/workspace/review_results.txt"
     # Fetch PR details to get the branch name
     pr_url = f"https://api.github.com/repos/{repo_owner}/{repo_name}/pulls/{pr_number}"
     headers = {} if public_repo else AUTH_HEADERS
@@ -169,6 +222,13 @@ def cli(repo, pr_number, model,pr_authoremail):
         click.echo(f"\nReviewing changes in: {filename}")
         review = review_code(diff, filename, full_code, model)
         click.echo(f"\nReview for {filename}:{review}\n{'-'*40}")
+        with open(output_file, "a", encoding="utf-8") as f:
+        f.write(f"\n### Review for {filename}\n{review}\n{'-'*40}\n")
+    click.echo("sending mail")
+    try:
+        summarize_and_email(output_file,pr_authoremail)
+    except Exception as e:
+        click.echo(e)
 
 if __name__ == "__main__":
     cli()

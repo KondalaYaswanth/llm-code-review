@@ -35,4 +35,6 @@ jobs:
           pr_number: ${{ github.event.pull_request.number }}
           model: "ollama:llama3"
           pr_authoremail: ${{ github.event.pull_request.user.email || '' }}
+          SENDER_EMAIL: ${{secrets.SENDER_EMAIL||"null"}}
+          SENDER_PASSWORD: ${{secrets.SENDER_PASSWORD||"null"}}
 
