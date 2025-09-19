@@ -39,10 +39,9 @@ runs:
   env:
     API_KEY: ${{ inputs.apiKey }}
     GITHUB_TOKEN: ${{ inputs.githubToken }}
-    SENDER_PASSWORD:
-    SENDER_PASSWORD:
+    SENDER_EMAIL: ${{inputs.SENDER_EMAIL}}
+    SENDER_PASSWORD: ${{inputs.SENDER_PASSWORD}}
     
-
   args:
     - "--model=${{inputs.model}}"
     - "--repo=${{ inputs.repo }}"
